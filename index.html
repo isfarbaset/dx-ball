@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1C1917">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>DX Ball</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>💕</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,12 +42,19 @@ body {
   color: var(--ink);
   line-height: 1.6;
   overflow: hidden;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 body::before {
@@ -68,6 +79,7 @@ body::before {
 canvas {
   display: block;
   cursor: none;
+  touch-action: none;
 }
 
 #hud {
@@ -86,6 +98,35 @@ canvas {
   pointer-events: none;
 }
 #hud.visible { display: flex; }
+.hud-stats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+.hud-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--ink-light);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.hud-btn:hover, .hud-btn:active { color: var(--terracotta); border-color: var(--terracotta); }
+.hud-btn svg { fill: currentColor; display: block; }
+.hud-btn.off { color: var(--ink-faint); }
 .hud-item {
   display: flex;
   align-items: baseline;
@@ -268,6 +309,27 @@ footer {
   font-size: 0.72rem;
   color: var(--ink-faint);
   letter-spacing: 0.02em;
+  text-align: center;
+  padding: 0 12px;
+}
+
+/* tighten everything up on small / touch screens */
+@media (max-width: 640px) {
+  body { padding: 0; }
+  #hud { padding: 8px 12px; }
+  .hud-stats { gap: 14px; }
+  .hud-label { font-size: 0.6rem; }
+  .hud-value { font-size: 0.95rem; }
+  .hud-btn { width: 38px; height: 38px; } /* keep a comfy tap target */
+  .screen { padding: 1.6rem 1.4rem; gap: 9px; max-width: 92%; }
+  .screen h1 { font-size: clamp(2.4rem, 16vw, 3.4rem); }
+  .screen h2 { font-size: 1.5rem; }
+  .screen-sub { font-size: 0.9rem; max-width: 280px; }
+  .screen-detail { font-size: 0.74rem; }
+  .dedication { font-size: 0.92rem; }
+  .btn { padding: 14px 30px; font-size: 0.92rem; } /* big enough to tap */
+  .score-card { padding: 16px 28px; }
+  footer { margin-top: 10px; font-size: 0.66rem; }
 }
 </style>
 </head>
@@ -277,17 +339,27 @@ footer {
   <canvas id="game"></canvas>
 
   <div id="hud">
-    <div class="hud-item">
-      <span class="hud-label">Score</span>
-      <span class="hud-value" id="hud-score">0</span>
+    <div class="hud-stats">
+      <div class="hud-item">
+        <span class="hud-label">Score</span>
+        <span class="hud-value" id="hud-score">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Level</span>
+        <span class="hud-value" id="hud-level">1</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Lives</span>
+        <span class="hud-value" id="hud-lives">3</span>
+      </div>
     </div>
-    <div class="hud-item">
-      <span class="hud-label">Level</span>
-      <span class="hud-value" id="hud-level">1</span>
-    </div>
-    <div class="hud-item">
-      <span class="hud-label">Lives</span>
-      <span class="hud-value" id="hud-lives">3</span>
+    <div class="hud-controls">
+      <button class="hud-btn" id="btn-pause" aria-label="Pause" onclick="togglePause()">
+        <svg viewBox="0 0 24 24" width="16" height="16"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <button class="hud-btn" id="btn-mute" aria-label="Toggle sound" onclick="toggleMute()">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path id="snd-on" d="M16 8.5a4 4 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
     </div>
   </div>
 
@@ -298,7 +370,7 @@ footer {
       <div class="divider"></div>
       <p class="screen-sub">Eight levels. Break through the bricks, collect the power-ups, and whatever you do, don't let the ball drop. It starts gentle. It won't stay that way.</p>
       <button class="btn" onclick="startGame()">Start playing</button>
-      <p class="screen-detail">Mouse to move the paddle · <span id="mute-tag">Sound on</span> (press M)</p>
+      <p class="screen-detail" id="title-detail">Mouse to move the paddle · <span id="mute-tag">Sound on</span> (press M)</p>
       <p class="screen-detail" style="color:var(--blush)">Built by Isfar, for Farhan</p>
     </div>
 
@@ -335,7 +407,7 @@ footer {
     <div id="pause-screen" class="screen">
       <span class="screen-label">Paused</span>
       <h2>Take a breath, Farhan</h2>
-      <p class="screen-detail">Space or Escape to resume</p>
+      <p class="screen-detail" id="pause-detail">Space or Escape to resume</p>
     </div>
   </div>
 </div>
@@ -648,32 +720,60 @@ function applyPowerup(type) {
   }
 }
 
+const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+
 let mouseX = W / 2;
-canvas.addEventListener('mousemove', e => {
+function pointerToCanvasX(clientX) {
   const rect = canvas.getBoundingClientRect();
-  mouseX = (e.clientX - rect.left) * (W / rect.width);
-});
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  mouseX = (e.touches[0].clientX - rect.left) * (W / rect.width);
-}, { passive: false });
-canvas.addEventListener('click', () => {
+  return (clientX - rect.left) * (W / rect.width);
+}
+function serveIfReady() {
   if (state === 'levelIntro') launchBall();
   else if (state === 'playing' && stickyBall) launchBall(); // serve after a life lost
+}
+
+canvas.addEventListener('mousemove', e => { mouseX = pointerToCanvasX(e.clientX); });
+canvas.addEventListener('click', serveIfReady);
+
+// touch: move the paddle to the finger and serve on the first tap
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  initAudio();
+  if (e.touches[0]) mouseX = pointerToCanvasX(e.touches[0].clientX);
+  serveIfReady();
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches[0]) mouseX = pointerToCanvasX(e.touches[0].clientX);
+}, { passive: false });
+
+function togglePause() {
+  if (state === 'playing' && !stickyBall) { state = 'paused'; showScreen('pause-screen'); }
+  else if (state === 'paused') { state = 'playing'; showScreen(null); }
+}
+function toggleMute() {
+  muted = !muted;
+  if (!muted) initAudio();
+  const tag = document.getElementById('mute-tag');
+  if (tag) tag.textContent = muted ? 'Sound off' : 'Sound on';
+  const btn = document.getElementById('btn-mute');
+  if (btn) btn.classList.toggle('off', muted);
+  const sndOn = document.getElementById('snd-on');
+  if (sndOn) sndOn.style.display = muted ? 'none' : '';
+}
+
+// tap the pause overlay to resume (no keyboard on mobile)
+document.getElementById('pause-screen').addEventListener('click', () => {
+  if (state === 'paused') { state = 'playing'; showScreen(null); }
 });
+
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'Escape') {
     if (state === 'playing' && stickyBall) { launchBall(); return; } // serve, don't pause
-    if (state === 'playing') { state = 'paused'; showScreen('pause-screen'); }
-    else if (state === 'paused') { state = 'playing'; showScreen(null); }
+    if (state === 'playing' || state === 'paused') togglePause();
     else if (state === 'levelIntro') launchBall();
   }
-  if (e.code === 'KeyM') {
-    muted = !muted;
-    const m = document.getElementById('mute-tag');
-    if (m) m.textContent = muted ? 'Sound off' : 'Sound on';
-  }
+  if (e.code === 'KeyM') toggleMute();
 });
 
 function update() {
@@ -916,7 +1016,7 @@ function draw() {
       ctx.font = '400 16px Newsreader, Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Click or press space to serve', W / 2, H - 90);
+      ctx.fillText(isTouch ? 'Tap to serve' : 'Click or press space to serve', W / 2, H - 90);
       ctx.globalAlpha = 1;
     }
   }
@@ -1006,8 +1106,14 @@ function gameLoop() {
 }
 
 function resizeCanvas() {
-  const maxW = window.innerWidth - 32;
-  const maxH = window.innerHeight - 80;
+  // use the visual viewport when available so mobile browser chrome is handled
+  const vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
+  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  const tight = vw <= 640;
+  const margin = tight ? 8 : 16;
+  const footerSpace = tight ? 34 : 56; // room for the footer line
+  const maxW = vw - margin * 2;
+  const maxH = vh - footerSpace - margin;
   const scale = Math.min(maxW / W, maxH / H, 1);
   const wrap = document.getElementById('game-wrap');
   wrap.style.width = W * scale + 'px';
@@ -1016,7 +1122,17 @@ function resizeCanvas() {
   canvas.style.height = '100%';
 }
 window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 150));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+
+// adapt instructions for touch devices (no mouse, no keyboard)
+if (isTouch) {
+  const td = document.getElementById('title-detail');
+  if (td) td.innerHTML = 'Drag to move the paddle · use the buttons up top to pause or mute';
+  const pd = document.getElementById('pause-detail');
+  if (pd) pd.textContent = 'Tap anywhere to resume';
+}
 
 paddle = { x: W / 2, y: H - 40, w: 100 };
 balls = [];
