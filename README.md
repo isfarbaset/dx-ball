@@ -4,9 +4,13 @@ A small brick-breaker, built by Isfar for Chonkie, for our 2nd anniversary.
 
 It is one HTML file, no build step, no dependencies. Just a canvas, some love, and a heart you have to break through to win.
 
+**▶ Play it live: https://isfarbaset.github.io/dx-ball/**
+
+![DX Ball — the heart finale](assets/preview.svg)
+
 ## Play it
 
-Open `index.html` in any browser, or play the live version on GitHub Pages.
+Play it live at **https://isfarbaset.github.io/dx-ball/**, or open `index.html` in any browser.
 
 To run it locally:
 
