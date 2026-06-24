@@ -1,6 +1,6 @@
 # DX Ball
 
-A small brick-breaker, built by Isfar for Farhan, for our 2nd anniversary.
+A small brick-breaker, built by Isfar for Chonkie, for our 2nd anniversary.
 
 It is one HTML file, no build step, no dependencies. Just a canvas, some love, and a heart you have to break through to win.
 
