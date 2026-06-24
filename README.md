@@ -23,6 +23,10 @@ python3 -m http.server 8755
 - **M** toggles sound.
 - Clear all the bricks to move to the next level. Don't let the ball drop.
 
+## On your phone
+
+The board adapts to your screen. In landscape it is a wide 4:3 field, and in portrait it switches to a dedicated tall playfield built for one hand. Drag to move the paddle, tap to serve, and use the pause and sound buttons in the top corner (no keyboard needed).
+
 ## Eight levels
 
 It starts gentle and does not stay that way. The ball speeds up the longer a rally goes, and every level starts a little faster than the last.

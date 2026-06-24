@@ -420,17 +420,56 @@ const ctx = canvas.getContext('2d');
 const overlay = document.getElementById('ui-overlay');
 const hud = document.getElementById('hud');
 
-const W = 800, H = 600;
-canvas.width = W;
-canvas.height = H;
+// The playfield comes in two shapes. A wide 4:3 board for landscape and
+// desktop, and a tall board built for one-handed phone play in portrait.
+const HEART_WIDE = [
+  '..xxxx..xxxx..',
+  '.xxxxxx.xxxxxx',
+  'xxxxxxxxxxxxxx',
+  'xxxxxxxxxxxxxx',
+  '.xxxxxxxxxxxx.',
+  '..xxxxxxxxxx..',
+  '...xxxxxxxx...',
+  '....xxxxxx....',
+  '.....xxxx.....',
+  '......xx......',
+];
+const HEART_TALL = [
+  '.xx..xx.',
+  'xxxxxxxx',
+  'xxxxxxxx',
+  'xxxxxxxx',
+  'xxxxxxxx',
+  '.xxxxxx.',
+  '.xxxxxx.',
+  '..xxxx..',
+  '..xxxx..',
+  '...xx...',
+];
+const FIELDS = {
+  landscape: { W: 800, H: 600, COLS: 12, ROWS: 9,  BRICK_W: 58, GRID: 63, TOP: 56, heart: HEART_WIDE },
+  portrait:  { W: 560, H: 900, COLS: 8,  ROWS: 11, BRICK_W: 60, GRID: 56, TOP: 96, heart: HEART_TALL },
+};
 
-const BRICK_ROWS = 9;
-const BRICK_COLS = 12;
-const BRICK_W = 58;
+let W, H, BRICK_ROWS, BRICK_COLS, BRICK_W, BRICK_LEFT, BRICK_TOP, GRID, HEART_ART, isPortrait;
 const BRICK_H = 18;
 const BRICK_PAD = 5;
-const BRICK_TOP = 56;
-const BRICK_LEFT = (W - (BRICK_COLS * (BRICK_W + BRICK_PAD) - BRICK_PAD)) / 2;
+
+function configureField() {
+  isPortrait = window.innerHeight >= window.innerWidth;
+  const f = FIELDS[isPortrait ? 'portrait' : 'landscape'];
+  W = f.W; H = f.H;
+  BRICK_COLS = f.COLS; BRICK_ROWS = f.ROWS; BRICK_W = f.BRICK_W; GRID = f.GRID; BRICK_TOP = f.TOP;
+  HEART_ART = f.heart;
+  BRICK_LEFT = (W - (BRICK_COLS * (BRICK_W + BRICK_PAD) - BRICK_PAD)) / 2;
+  canvas.width = W;
+  canvas.height = H;
+  // reposition the paddle for the new field; clear transient objects when
+  // we're (re)configuring from the title screen so nothing looks stranded
+  paddle = { x: W / 2, y: H - 40, w: paddleW || 100 };
+  mouseX = W / 2;
+  if (state === 'title') { balls = []; bricks = []; powerups = []; particles = []; floaters = []; }
+}
 
 const PADDLE_H = 12;
 const BALL_R = 6;
@@ -546,21 +585,10 @@ function brickPresent(lvl, r, c, rows) {
 }
 
 function isHeartBrick(r, c, rows) {
-  const heart = [
-    '..xxxx..xxxx..',
-    '.xxxxxx.xxxxxx',
-    'xxxxxxxxxxxxxx',
-    'xxxxxxxxxxxxxx',
-    '.xxxxxxxxxxxx.',
-    '..xxxxxxxxxx..',
-    '...xxxxxxxx...',
-    '....xxxxxx....',
-    '.....xxxx.....',
-    '......xx......',
-  ];
-  if (r >= heart.length) return false;
-  const row = heart[r];
-  const offset = Math.floor((14 - BRICK_COLS) / 2);
+  const art = HEART_ART;
+  if (r >= art.length) return false;
+  const row = art[r];
+  const offset = Math.floor((row.length - BRICK_COLS) / 2); // center the art on the grid
   const idx = c + offset;
   return idx >= 0 && idx < row.length && row[idx] === 'x';
 }
@@ -594,8 +622,10 @@ function loadLevel() {
   comboTimer = 0;
   shake = 0;
   // Slow at first, faster every level, then a gentle ramp within the level.
-  levelStartSpeed = BASE_BALL_SPEED + (level - 1) * 0.45;
-  levelMaxSpeed = Math.min(SPEED_CAP, levelStartSpeed + 3.0);
+  // The portrait field is taller, so nudge speeds up to keep the pace lively.
+  const sc = isPortrait ? 1.2 : 1;
+  levelStartSpeed = (BASE_BALL_SPEED + (level - 1) * 0.45) * sc;
+  levelMaxSpeed = Math.min(SPEED_CAP * sc, levelStartSpeed + 3.0 * sc);
   paddle = { x: W / 2, y: H - 40, w: paddleW };
   stickyBall = true;
 
@@ -722,7 +752,7 @@ function applyPowerup(type) {
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
-let mouseX = W / 2;
+let mouseX; // set by configureField once the field size is known
 function pointerToCanvasX(clientX) {
   const rect = canvas.getBoundingClientRect();
   return (clientX - rect.left) * (W / rect.width);
@@ -941,13 +971,13 @@ function draw() {
   // subtle grid lines
   ctx.strokeStyle = PALETTE.border;
   ctx.lineWidth = 0.3;
-  for (let x = 0; x < W; x += 63) {
+  for (let x = 0; x < W; x += GRID) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, H);
     ctx.stroke();
   }
-  for (let y = 0; y < H; y += 63) {
+  for (let y = 0; y < H; y += GRID) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(W, y);
@@ -1121,9 +1151,18 @@ function resizeCanvas() {
   canvas.style.width = '100%';
   canvas.style.height = '100%';
 }
-window.addEventListener('resize', resizeCanvas);
-window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 150));
-if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
+function handleViewportChange() {
+  // before the game starts, adopt the orientation's dedicated playfield
+  if (state === 'title' && (window.innerHeight >= window.innerWidth) !== isPortrait) {
+    configureField();
+  }
+  resizeCanvas();
+}
+window.addEventListener('resize', handleViewportChange);
+window.addEventListener('orientationchange', () => setTimeout(handleViewportChange, 150));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', handleViewportChange);
+
+configureField(); // pick the portrait or landscape field and size everything
 resizeCanvas();
 
 // adapt instructions for touch devices (no mouse, no keyboard)
@@ -1134,11 +1173,6 @@ if (isTouch) {
   if (pd) pd.textContent = 'Tap anywhere to resume';
 }
 
-paddle = { x: W / 2, y: H - 40, w: 100 };
-balls = [];
-bricks = [];
-powerups = [];
-particles = [];
 gameLoop();
 </script>
 </body>
