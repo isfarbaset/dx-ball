@@ -293,17 +293,19 @@ footer {
 
   <div id="ui-overlay" class="active">
     <div id="title-screen" class="screen visible">
-      <span class="screen-label">Happy 2nd Anniversary</span>
+      <span class="screen-label">Happy 2nd Anniversary, Farhan</span>
       <h1>DX <em>Ball</em></h1>
       <div class="divider"></div>
-      <p class="screen-sub">Break through the bricks, collect the power-ups, and whatever you do, don't let the ball drop.</p>
+      <p class="screen-sub">Eight levels. Break through the bricks, collect the power-ups, and whatever you do, don't let the ball drop. It starts gentle. It won't stay that way.</p>
       <button class="btn" onclick="startGame()">Start playing</button>
-      <p class="screen-detail">Mouse to move the paddle</p>
+      <p class="screen-detail">Mouse to move the paddle · <span id="mute-tag">Sound on</span> (press M)</p>
+      <p class="screen-detail" style="color:var(--blush)">Built by Isfar, for Farhan</p>
     </div>
 
     <div id="level-screen" class="screen">
       <span class="screen-label" id="level-label">Level 1</span>
       <h2 id="level-title"></h2>
+      <p class="screen-sub" id="level-flavor"></p>
       <div class="divider"></div>
       <button class="btn" onclick="launchBall()">Go</button>
     </div>
@@ -314,6 +316,7 @@ footer {
         <span class="score-num" id="final-score">0</span>
         <span class="score-label">points</span>
       </div>
+      <p class="screen-sub">Even Isfar drops the ball sometimes. One more go, Farhan?</p>
       <button class="btn" onclick="startGame()">Try again</button>
     </div>
 
@@ -325,19 +328,19 @@ footer {
         <span class="score-label">points</span>
       </div>
       <div class="divider"></div>
-      <p class="dedication">Here's to many more years of us breaking through everything together. I love you.</p>
+      <p class="dedication">Two years down, Farhan. Here's to breaking through everything else together, for as long as you'll have me. I love you. (yours, Isfar)</p>
       <button class="btn" onclick="startGame()">Play again</button>
     </div>
 
     <div id="pause-screen" class="screen">
       <span class="screen-label">Paused</span>
-      <h2>Take a breath</h2>
+      <h2>Take a breath, Farhan</h2>
       <p class="screen-detail">Space or Escape to resume</p>
     </div>
   </div>
 </div>
 
-<footer>A small game, made with love</footer>
+<footer>A small game, made with love · Isfar &amp; Farhan</footer>
 
 <script>
 const canvas = document.getElementById('game');
@@ -349,7 +352,7 @@ const W = 800, H = 600;
 canvas.width = W;
 canvas.height = H;
 
-const BRICK_ROWS = 8;
+const BRICK_ROWS = 9;
 const BRICK_COLS = 12;
 const BRICK_W = 58;
 const BRICK_H = 18;
@@ -359,7 +362,10 @@ const BRICK_LEFT = (W - (BRICK_COLS * (BRICK_W + BRICK_PAD) - BRICK_PAD)) / 2;
 
 const PADDLE_H = 12;
 const BALL_R = 6;
-const BASE_BALL_SPEED = 5;
+const BASE_BALL_SPEED = 3.4;   // gentle to start
+const SPEED_RAMP = 0.0016;     // ball quietly speeds up as a level goes on
+const SPEED_CAP = 10.5;        // hard ceiling so it never turns unfair
+const NUM_LEVELS = 8;
 
 const PALETTE = {
   bg: '#1C1917',
@@ -393,27 +399,51 @@ const POWERUP_STYLE = {
 };
 
 let state = 'title';
-let score, lives, level, bricks, balls, paddle, powerups, particles;
+let score, lives, level, bricks, balls, paddle, powerups, particles, floaters;
 let paddleW, stickyBall, animFrame;
+let levelStartSpeed, levelMaxSpeed, combo, comboTimer, shake;
 
 const levelNames = [
   'A Fresh Start',
   'Building Together',
   'Through Thick & Thin',
   'Side by Side',
+  'The Long Drives',
+  'Quiet Sunday Mornings',
   'Two Years Strong',
+  'Forever & A Day',
+];
+
+// little notes from Isfar to Farhan, one per level
+const levelFlavor = [
+  'Where it all began, Farhan.',
+  'Brick by brick, the way we do everything.',
+  "We've broken through worse than this.",
+  "You aim, I'll catch. Same as always.",
+  'Every one of those long drives was worth it.',
+  'Coffee, you, and absolutely no rush.',
+  'Look how far we got, Farhan.',
+  'And the rest of it is ours. Love, Isfar.',
 ];
 
 function generateBricks(lvl) {
-  const rows = Math.min(BRICK_ROWS, 4 + lvl);
+  const rows = Math.min(BRICK_ROWS, 3 + lvl);
+  const isFinal = lvl === NUM_LEVELS;
   const arr = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < BRICK_COLS; c++) {
+      if (!brickPresent(lvl, r, c, rows)) continue;
+
       let hits = 1;
       if (lvl >= 2 && r < 2) hits = 2;
       if (lvl >= 3 && r === 0) hits = 3;
-      if (lvl >= 4 && r < 2 && (c + r) % 3 === 0) hits = 3;
-      if (lvl === 5 && isHeartBrick(r, c, rows)) hits = Math.min(hits + 1, 3);
+      if (lvl >= 4 && (c + r) % 3 === 0) hits = Math.max(hits, 2);
+      if (lvl >= 5 && r < 2) hits = 3;
+      if (lvl >= 6 && (c + r) % 2 === 0) hits = Math.max(hits, 2);
+      if (lvl >= 7 && r < 3) hits = 3;
+
+      const heart = isFinal && isHeartBrick(r, c, rows);
+      if (heart) hits = 3;
 
       arr.push({
         x: BRICK_LEFT + c * (BRICK_W + BRICK_PAD),
@@ -423,11 +453,24 @@ function generateBricks(lvl) {
         hits,
         maxHits: hits,
         alive: true,
-        isHeart: lvl === 5 && isHeartBrick(r, c, rows),
+        isHeart: heart,
       });
     }
   }
   return arr;
+}
+
+// Per-level layout: which cells hold a brick (gaps add variety and pace)
+function brickPresent(lvl, r, c, rows) {
+  if (lvl === NUM_LEVELS) return isHeartBrick(r, c, rows); // final board: a heart
+  if (lvl === 5) return c % 4 !== 0;                       // vertical corridors
+  if (lvl === 6) return (r + c) % 5 !== 0;                 // scattered windows
+  if (lvl === 7) {                                         // diamond, trimmed corners
+    const midC = (BRICK_COLS - 1) / 2;
+    const midR = (rows - 1) / 2;
+    return Math.abs(c - midC) + Math.abs(r - midR) <= Math.max(midC, midR) + 1;
+  }
+  return true;
 }
 
 function isHeartBrick(r, c, rows) {
@@ -461,6 +504,7 @@ function showScreen(id) {
 }
 
 function startGame() {
+  initAudio();
   score = 0;
   lives = 3;
   level = 1;
@@ -472,7 +516,14 @@ function loadLevel() {
   bricks = generateBricks(level);
   powerups = [];
   particles = [];
+  floaters = [];
   balls = [];
+  combo = 0;
+  comboTimer = 0;
+  shake = 0;
+  // Slow at first, faster every level, then a gentle ramp within the level.
+  levelStartSpeed = BASE_BALL_SPEED + (level - 1) * 0.45;
+  levelMaxSpeed = Math.min(SPEED_CAP, levelStartSpeed + 3.0);
   paddle = { x: W / 2, y: H - 40, w: paddleW };
   stickyBall = true;
 
@@ -483,6 +534,7 @@ function loadLevel() {
 
   document.getElementById('level-label').textContent = `Level ${level}`;
   document.getElementById('level-title').textContent = levelNames[level - 1] || '';
+  document.getElementById('level-flavor').textContent = levelFlavor[level - 1] || '';
   showScreen('level-screen');
   state = 'levelIntro';
 
@@ -490,8 +542,9 @@ function loadLevel() {
 }
 
 function launchBall() {
+  initAudio();
   if (stickyBall) {
-    const speed = BASE_BALL_SPEED + (level - 1) * 0.3;
+    const speed = levelStartSpeed;
     const angle = -Math.PI / 4 + Math.random() * (-Math.PI / 2);
     balls.push({
       x: paddle.x,
@@ -499,7 +552,9 @@ function launchBall() {
       dx: Math.cos(angle) * speed,
       dy: Math.sin(angle) * speed,
       speed,
+      trail: [],
     });
+    combo = 0;
     stickyBall = false;
   }
   showScreen(null);
@@ -528,6 +583,40 @@ function spawnParticles(x, y, color, count) {
   }
 }
 
+function addFloater(x, y, text, mult) {
+  floaters.push({ x, y: y - 4, text, life: 55, maxLife: 55, mult });
+}
+
+// --- gentle web-audio sound effects ---
+let audioCtx = null;
+let muted = false;
+function initAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { audioCtx = null; }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+function tone(freq, dur, type = 'sine', vol = 0.14) {
+  if (!audioCtx || muted) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type;
+  o.frequency.value = freq;
+  const now = audioCtx.currentTime;
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.linearRampToValueAtTime(vol, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(now);
+  o.stop(now + dur + 0.02);
+}
+function playPaddle() { tone(200, 0.08, 'triangle', 0.10); }
+function playBrick(c) { tone(360 + Math.min(c, 6) * 45, 0.07, 'triangle', 0.09); }
+function playPower() { tone(560, 0.09, 'sine', 0.13); setTimeout(() => tone(820, 0.12, 'sine', 0.13), 70); }
+function playLose() { tone(300, 0.18, 'sawtooth', 0.10); setTimeout(() => tone(170, 0.3, 'sawtooth', 0.10), 90); }
+function playWin() { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.32, 'sine', 0.13), i * 150)); }
+
 function applyPowerup(type) {
   if (type === 'wide') {
     paddleW = Math.min(200, paddleW + 30);
@@ -542,6 +631,7 @@ function applyPowerup(type) {
           dx: Math.cos(angle) * b.speed,
           dy: -Math.abs(Math.sin(angle) * b.speed),
           speed: b.speed,
+          trail: [],
         });
       }
     });
@@ -570,11 +660,19 @@ canvas.addEventListener('touchmove', e => {
 }, { passive: false });
 canvas.addEventListener('click', () => {
   if (state === 'levelIntro') launchBall();
+  else if (state === 'playing' && stickyBall) launchBall(); // serve after a life lost
 });
 document.addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'Escape') {
+    if (state === 'playing' && stickyBall) { launchBall(); return; } // serve, don't pause
     if (state === 'playing') { state = 'paused'; showScreen('pause-screen'); }
     else if (state === 'paused') { state = 'playing'; showScreen(null); }
+    else if (state === 'levelIntro') launchBall();
+  }
+  if (e.code === 'KeyM') {
+    muted = !muted;
+    const m = document.getElementById('mute-tag');
+    if (m) m.textContent = muted ? 'Sound off' : 'Sound on';
   }
 });
 
@@ -583,9 +681,22 @@ function update() {
 
   paddle.x = Math.max(paddle.w / 2, Math.min(W - paddle.w / 2, mouseX));
 
+  if (comboTimer > 0) comboTimer--;
+  shake *= 0.88;
+
   balls.forEach(ball => {
+    // gentle within-level acceleration, kept pointing the same way
+    ball.speed = Math.min(ball.speed + SPEED_RAMP, levelMaxSpeed);
+    const mag = Math.hypot(ball.dx, ball.dy) || ball.speed;
+    ball.dx = ball.dx / mag * ball.speed;
+    ball.dy = ball.dy / mag * ball.speed;
+
     ball.x += ball.dx;
     ball.y += ball.dy;
+
+    if (!ball.trail) ball.trail = [];
+    ball.trail.push({ x: ball.x, y: ball.y });
+    while (ball.trail.length > Math.round(4 + ball.speed)) ball.trail.shift();
 
     if (ball.x - BALL_R <= 0) { ball.x = BALL_R; ball.dx = Math.abs(ball.dx); }
     if (ball.x + BALL_R >= W) { ball.x = W - BALL_R; ball.dx = -Math.abs(ball.dx); }
@@ -604,6 +715,8 @@ function update() {
       ball.dy = Math.sin(angle) * ball.speed;
       if (ball.dy > -1) ball.dy = -1;
       ball.y = paddle.y - PADDLE_H / 2 - BALL_R;
+      combo = 0; // a rally resets when the ball comes home
+      playPaddle();
     }
 
     bricks.forEach(brick => {
@@ -623,13 +736,25 @@ function update() {
         else ball.dy = -ball.dy;
 
         brick.hits--;
+        const cx = brick.x + brick.w / 2;
+        const cy = brick.y + brick.h / 2;
         if (brick.hits <= 0) {
           brick.alive = false;
-          score += 10 * level;
+          combo++;
+          comboTimer = 70;
+          const mult = Math.min(combo, 5);
+          const gain = 10 * level * mult;
+          score += gain;
           document.getElementById('hud-score').textContent = score;
           const colors = BRICK_COLORS[brick.maxHits] || BRICK_COLORS[1];
-          spawnParticles(brick.x + brick.w / 2, brick.y + brick.h / 2, colors.fill, 6);
-          spawnPowerup(brick.x + brick.w / 2, brick.y + brick.h / 2);
+          spawnParticles(cx, cy, colors.fill, brick.maxHits >= 3 ? 10 : 6);
+          spawnPowerup(cx, cy);
+          addFloater(cx, cy, mult > 1 ? `+${gain} ×${mult}` : `+${gain}`, mult);
+          shake = Math.min(shake + (brick.maxHits >= 3 ? 5 : 2), 12);
+          playBrick(combo);
+        } else {
+          spawnParticles(cx, cy, BRICK_COLORS[brick.maxHits].light, 3);
+          playBrick(1);
         }
       }
     });
@@ -637,8 +762,13 @@ function update() {
 
   balls = balls.filter(b => b.y - BALL_R < H + 20);
 
-  if (balls.length === 0) {
+  // a life is lost only when the last ball drops and we're not already
+  // waiting to serve (stickyBall guards against draining lives every frame)
+  if (balls.length === 0 && !stickyBall) {
     lives--;
+    combo = 0;
+    shake = 16;
+    playLose();
     document.getElementById('hud-lives').textContent = Math.max(0, lives);
     if (lives <= 0) {
       state = 'gameover';
@@ -647,7 +777,7 @@ function update() {
       hud.classList.remove('visible');
       return;
     }
-    stickyBall = true;
+    stickyBall = true; // rest the next ball on the paddle, wait for a serve
     paddleW = Math.max(100, paddleW - 10);
     paddle.w = paddleW;
   }
@@ -663,6 +793,7 @@ function update() {
     ) {
       applyPowerup(p.type);
       spawnParticles(p.x, p.y, POWERUP_STYLE[p.type].fill, 5);
+      playPower();
       return false;
     }
     return true;
@@ -676,12 +807,16 @@ function update() {
   });
   particles = particles.filter(p => p.life > 0);
 
+  floaters.forEach(f => { f.y -= 0.6; f.life--; });
+  floaters = floaters.filter(f => f.life > 0);
+
   if (bricks.every(b => !b.alive)) {
-    if (level >= 5) {
+    if (level >= NUM_LEVELS) {
       state = 'win';
       document.getElementById('win-score').textContent = score;
       showScreen('win-screen');
       hud.classList.remove('visible');
+      playWin();
     } else {
       level++;
       loadLevel();
@@ -698,6 +833,11 @@ function draw() {
   ctx.fillStyle = PALETTE.bg;
   ctx.fillRect(0, 0, W, H);
 
+  ctx.save();
+  if (shake > 0.3) {
+    ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+  }
+
   // subtle grid lines
   ctx.strokeStyle = PALETTE.border;
   ctx.lineWidth = 0.3;
@@ -712,6 +852,17 @@ function draw() {
     ctx.moveTo(0, y);
     ctx.lineTo(W, y);
     ctx.stroke();
+  }
+
+  // faint signature behind the heart on the final level
+  if (level === NUM_LEVELS) {
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = PALETTE.blush;
+    ctx.font = '300 64px Newsreader, Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('F + I', W / 2, H / 2 + 60);
+    ctx.globalAlpha = 1;
   }
 
   // bricks
@@ -758,13 +909,35 @@ function draw() {
     ctx.beginPath();
     ctx.arc(paddle.x, paddle.y - PADDLE_H / 2 - BALL_R, BALL_R, 0, Math.PI * 2);
     ctx.fill();
+    // serve hint when mid-level (after a life lost), not on the level intro overlay
+    if (state === 'playing') {
+      ctx.globalAlpha = 0.55 + 0.25 * Math.sin(Date.now() / 300);
+      ctx.fillStyle = PALETTE.ivory;
+      ctx.font = '400 16px Newsreader, Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Click or press space to serve', W / 2, H - 90);
+      ctx.globalAlpha = 1;
+    }
   }
 
-  // balls
+  // balls (with a speed-reactive trail and glow)
   balls.forEach(ball => {
-    ctx.fillStyle = PALETTE.ivory;
-    ctx.shadowColor = PALETTE.ivory;
-    ctx.shadowBlur = 8;
+    if (ball.trail) {
+      ball.trail.forEach((p, i) => {
+        const t = (i + 1) / ball.trail.length;
+        ctx.globalAlpha = t * 0.32;
+        ctx.fillStyle = PALETTE.ivory;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, BALL_R * t, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+    const fast = Math.max(0, ball.speed - BASE_BALL_SPEED);
+    ctx.fillStyle = fast > 3.5 ? PALETTE.terracottaLight : PALETTE.ivory;
+    ctx.shadowColor = fast > 3.5 ? PALETTE.terracotta : PALETTE.ivory;
+    ctx.shadowBlur = 6 + fast * 2.5;
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
     ctx.fill();
@@ -799,6 +972,31 @@ function draw() {
     ctx.fill();
   });
   ctx.globalAlpha = 1;
+
+  // floating score popups
+  floaters.forEach(f => {
+    const t = f.life / f.maxLife;
+    ctx.globalAlpha = Math.min(1, t * 1.5);
+    ctx.fillStyle = f.mult >= 3 ? PALETTE.gold : (f.mult >= 2 ? PALETTE.terracottaLight : PALETTE.ivory);
+    ctx.font = `400 ${14 + (f.mult > 1 ? 5 : 0)}px Newsreader, Georgia, serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(f.text, f.x, f.y);
+  });
+  ctx.globalAlpha = 1;
+
+  // combo streak banner
+  if (comboTimer > 0 && combo >= 3) {
+    ctx.globalAlpha = Math.min(1, comboTimer / 30) * 0.9;
+    ctx.fillStyle = PALETTE.gold;
+    ctx.font = '400 22px Newsreader, Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${combo} in a row`, W / 2, H - 70);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
 }
 
 function gameLoop() {
